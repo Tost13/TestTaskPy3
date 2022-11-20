@@ -49,8 +49,10 @@ def stateCmd():
         ledState.brightness = int(re.search(r'\d+', data[2]).group())
         frequencyData = data[3].split("=")
         ledState.frequency = float(frequencyData[1])
+        return True
     else:
-        print("Status failed")
+        return False
+
 
 def resetCmd():
     global UARTState
@@ -62,9 +64,9 @@ def resetCmd():
         time.sleep(0.1)
     if RxBuff == "RESET\r\n":
         stateCmd()
-        print("RESET successful")
+        return True
     else:
-        print("RESET failed")
+        return False
 
 
 def setValueCmd(command):
@@ -87,8 +89,9 @@ def setValueCmd(command):
         ledState.brightness = int(re.search(r'\d+', data[2]).group())
         frequencyData = data[3].split("=")
         ledState.frequency = float(frequencyData[1])
+        return True
     else:
-        print("set value failed")
+        return False
 
 
 def CommTask():
@@ -96,28 +99,82 @@ def CommTask():
     global ledState
     for line in sys.stdin:
         string = line.rstrip()
-        if 'q' == string:
-            break
-        elif "help" == string:
+        setCmd = string.split("=")
+        if "help" == string:
+            print('/***************************************************************************************/')
             print('help: \r\n')
             print('status - get status of the device')
-            print('status - get status of the device')
+            print('reset - reset values on the device')
+            print('state=value - set state on the device, options of value are on, off and blink')
+            print('   example state=on')
+            print('brightness=value - set brightness on the device, options of value are from 0 to 100')
+            print('   example brightness=50')
+            print('frequency=value - set frequency on the device, options of value are from 0.5 to 10.0')
+            print('   example frequency=2.0')
+            print('   in float only 4 nambers after zero are accepted, 1.23456 will be rounded to 1.2346')
+            print('/***************************************************************************************/')
         elif "status" == string:
-            print('Status')
             stateCmd()
-            print("STATUS:", "state is", ledState.state, "brightness is", ledState.brightness, "%",
-                  "frequency is", ledState.frequency, "Hz")
-        elif "reset"== string:
+            print("STATUS:", "state is", ledState.state, "; brightness is", ledState.brightness, "%",
+                  "; frequency is", ledState.frequency, "Hz")
+        elif "reset" == string:
             resetCmd()
-        setCmd = string.split("=")
-        if "state" == setCmd[0]:
-            if len(setCmd) == 2:
-                print('STATE')
+        elif len(setCmd) == 2:
+            if "state" == setCmd[0]:
                 if setCmd[1] == "off" or setCmd[1] == "on" or setCmd[1] == "blink":
-                    setValueCmd(string)
+                    if (setValueCmd(string)):
+                        if ledState.state == setCmd[1]:
+                            print('state command set value PASSED')
+                        else:
+                            print(
+                                'ERROR: state command set value PASSED but value wasnt changed')
+                    else:
+                        print('ERROR: state command set value FAILED')
                 else:
-                    print('wrong input in state comand')
-
+                    print('ERROR: wrong input in state command (off, on or blink)')
+            elif "brightness" == setCmd[0]:
+                try:
+                    value = int(setCmd[1])
+                except ValueError:
+                    print('Int expected for brightness command')
+                    value = 0xFF
+                if value >= 0 and value <= 100:
+                    if value == 0:
+                        print(
+                            'WARNING: value 0 is the same as state=off, use it insted')
+                    if (setValueCmd(string)):
+                        if ledState.brightness == value:
+                            print('brightness command set value PASSED')
+                        else:
+                            print(
+                                'ERROR: brightness command set value PASSED but value wasnt changed')
+                    else:
+                        print('ERROR: brightness command set value FAILED')
+                else:
+                    print('ERROR: wrong input in brightness command (from 0 to 100)')
+            elif "frequency" == setCmd[0]:
+                try:
+                    value = float(setCmd[1])
+                    valueStr = format(value, '.4f')
+                    value = float(valueStr)
+                except ValueError:
+                    print('Float expected for frequency command')
+                    value = 0xFF
+                if value >= 0.5 and value <= 10.0:
+                    if (setValueCmd(setCmd[0] +"="+ valueStr)):
+                        if ledState.frequency == value:
+                            print('frequency command set value PASSED')
+                        else:
+                            print(
+                                'ERROR: frequency command set value PASSED but value wasnt changed')
+                    else:
+                        print('ERROR: frequency command set value FAILED')
+                else:
+                    print('ERROR: wrong input in frequency command (from 0.5 to 10.0)')
+            else:
+                print('INFO: unknown command with =, use help for more info')
+        else:
+            print('INFO: unknown command, use help for more info')
 
 
 def UARTTask():
@@ -135,30 +192,36 @@ def UARTTask():
             size = serialUART.inWaiting()
             if size:
                 data = serialUART.read(size)
-                print("RX", data)
                 if UARTState == "read":
                     RxBuff = data.decode("utf-8")
                     UARTState = "wait"
+                elif data.decode("utf-8") == "BUTTON RESET\r\n":
+                    UARTState = "buttonReset"
 
             time.sleep(0.2)
     else:
-        print("sestatusrialUART not open")
+        print("ERROR: UART is not open")
 
 
 def Main():
     global ledState
+    global UARTState
     t1 = threading.Thread(target=CommTask, args=())
     t2 = threading.Thread(target=UARTTask, args=())
     t1.start()
     t2.start()
     global UARTState
-    print("type help for mode info")
+    print("type help for more info")
     stateCmd()
-    print("Initial device status:", "state is", ledState.state, "brightness is", ledState.brightness, "%",
-          "frequency is", ledState.frequency, "Hz")
+    print("Initial device status:", "state is", ledState.state, "; brightness is", ledState.brightness, "%",
+          "; frequency is", ledState.frequency, "Hz")
     while True:
+        if UARTState == "buttonReset":
+            print("INFO: device was reset using button")
+            stateCmd()
+            print("Status after reset:", "state is", ledState.state, "; brightness is", ledState.brightness, "%",
+                  "; frequency is", ledState.frequency, "Hz")
         time.sleep(0.1)
-
 
 
 if __name__ == '__main__':
