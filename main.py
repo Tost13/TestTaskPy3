@@ -8,14 +8,16 @@ from dataclasses import dataclass
 
 baudrateUART = 115200
 portUART = 'COM4'
-thread_flag = None
 
+# global variables
 global UARTState
-UARTState = "wait"
+UARTState = "wait"  # states for tasks (wait, send, wait, buttonReset)
 global RxBuff
 global TxBuff
 RxBuff = ""
 TxBuff = ""
+
+# structure to store values from device
 
 
 @dataclass
@@ -27,6 +29,9 @@ class LEDState:
 
 global ledState
 ledState = LEDState(state="", brightness=0, frequency=0.0)
+
+# Function to get status values on the device
+# Output: Status
 
 
 def stateCmd():
@@ -53,6 +58,9 @@ def stateCmd():
     else:
         return False
 
+# Function to reset values on the device
+# Output: Status
+
 
 def resetCmd():
     global UARTState
@@ -67,6 +75,10 @@ def resetCmd():
         return True
     else:
         return False
+
+# Function to set values on the device
+# Input: string with command
+# Output: Status
 
 
 def setValueCmd(command):
@@ -93,6 +105,8 @@ def setValueCmd(command):
     else:
         return False
 
+# Task responsible for user input
+
 
 def CommTask():
 
@@ -101,24 +115,33 @@ def CommTask():
         string = line.rstrip()
         setCmd = string.split("=")
         if "help" == string:
-            print('/***************************************************************************************/')
+            print(
+                '/***************************************************************************************/')
             print('help: \r\n')
             print('status - get status of the device')
             print('reset - reset values on the device')
-            print('state=value - set state on the device, options of value are on, off and blink')
+            print(
+                'state=value - set state on the device, options of value are on, off and blink')
             print('   example state=on')
-            print('brightness=value - set brightness on the device, options of value are from 0 to 100')
+            print(
+                'brightness=value - set brightness on the device, options of value are from 0 to 100')
             print('   example brightness=50')
-            print('frequency=value - set frequency on the device, options of value are from 0.5 to 10.0')
+            print(
+                'frequency=value - set frequency on the device, options of value are from 0.5 to 10.0')
             print('   example frequency=2.0')
-            print('   in float only 4 nambers after zero are accepted, 1.23456 will be rounded to 1.2346')
-            print('/***************************************************************************************/')
+            print(
+                '   in float only 4 numbers  after zero are accepted, 1.23456 will be rounded to 1.2346')
+            print(
+                '/***************************************************************************************/')
         elif "status" == string:
             stateCmd()
             print("STATUS:", "state is", ledState.state, "; brightness is", ledState.brightness, "%",
                   "; frequency is", ledState.frequency, "Hz")
         elif "reset" == string:
-            resetCmd()
+            if resetCmd():
+                print('reset PASSED')
+            else:
+                print('reset FAILED')
         elif len(setCmd) == 2:
             if "state" == setCmd[0]:
                 if setCmd[1] == "off" or setCmd[1] == "on" or setCmd[1] == "blink":
@@ -161,7 +184,7 @@ def CommTask():
                     print('Float expected for frequency command')
                     value = 0xFF
                 if value >= 0.5 and value <= 10.0:
-                    if (setValueCmd(setCmd[0] +"="+ valueStr)):
+                    if (setValueCmd(setCmd[0] + "=" + valueStr)):
                         if ledState.frequency == value:
                             print('frequency command set value PASSED')
                         else:
@@ -175,6 +198,8 @@ def CommTask():
                 print('INFO: unknown command with =, use help for more info')
         else:
             print('INFO: unknown command, use help for more info')
+
+# Task responsible for UART comm
 
 
 def UARTTask():
@@ -195,6 +220,7 @@ def UARTTask():
                 if UARTState == "read":
                     RxBuff = data.decode("utf-8")
                     UARTState = "wait"
+                # received if button pressed
                 elif data.decode("utf-8") == "BUTTON RESET\r\n":
                     UARTState = "buttonReset"
 
